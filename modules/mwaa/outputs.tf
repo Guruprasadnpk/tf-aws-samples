@@ -30,7 +30,7 @@ output "mwaa_role_arn" {
 
 output "mwaa_role_name" {
   description = "IAM role name of the MWAA Environment"
-  value       = var.execution_role_arn == null ? aws_iam_role.mwaa[0].id : ""
+  value       = var.execution_role_arn == null ? aws_iam_role.mwaa[0].name : ""
 }
 
 output "mwaa_security_group_id" {
@@ -41,4 +41,9 @@ output "mwaa_security_group_id" {
 output "aws_s3_bucket_name" {
   description = "S3 bucket Name of the MWAA Environment"
   value       = var.source_bucket_arn == null ? aws_s3_bucket.mwaa[0].id : ""
+}
+
+output "execution_role_arn" {
+  description = "The ARN of the MWAA execution role (either user provided or managed by the module)"
+  value = var.execution_role_arn != null ? var.execution_role_arn : aws_iam_role.mwaa[0].arn
 }

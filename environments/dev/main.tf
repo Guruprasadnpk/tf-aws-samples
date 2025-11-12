@@ -81,6 +81,14 @@ resource "aws_s3_object" "reqs" {
   etag     = filemd5("mwaa/${each.value}")
 }
 
+resource "aws_s3_object" "dbt_project" {
+  for_each = fileset("dags/dbt_sample_project", "**")
+  bucket   = aws_s3_bucket.this.id
+  key      = "dags/dbt_sample_project/${each.value}"
+  source   = "dags/dbt_sample_project/${each.value}"
+  etag     = filemd5("dags/dbt_sample_project/${each.value}")
+}
+
 #-----------------------------------------------------------
 # NOTE: MWAA Airflow environment takes minimum of 20 mins
 #-----------------------------------------------------------
@@ -96,7 +104,10 @@ module "mwaa" {
 
   ## If uploading requirements.txt or plugins, you can enable these via these options
   #plugins_s3_path      = "plugins.zip"
-  #requirements_s3_path = "requirements.txt"
+  requirements_s3_path = "requirements.txt"
+  requirements_s3_object_version = aws_s3_object.reqs["requirements.txt"].version_id
+  startup_script_s3_path = "startup.sh"
+  startup_script_s3_object_version = aws_s3_object.reqs["startup.sh"].version_id
 
   logging_configuration = {
     dag_processing_logs = {
@@ -163,4 +174,92 @@ module "vpc" {
   enable_dns_hostnames = true
 
   tags = var.tags
+}
+
+# --- PostgreSQL test DB for MWAA/dbt demo ---
+resource "aws_db_subnet_group" "pg" {
+  name       = "pg-demo"
+  subnet_ids = module.vpc.private_subnets
+  tags       = var.tags
+}
+
+resource "aws_security_group" "pg" {
+  name        = "pg-demo-sg"
+  description = "Allow MWAA/Airflow access to Postgres"
+  vpc_id      = module.vpc.vpc_id
+  tags        = var.tags
+
+  ingress {
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr] # restrict to VPC only; restrict further in prod
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "random_password" "pg" {
+  length  = 16
+  special = false
+}
+
+resource "aws_db_instance" "pg" {
+  identifier              = "pg-demo"
+  allocated_storage       = 20
+  storage_type            = "gp2"
+  engine                  = "postgres"
+  engine_version          = "17.6"
+  instance_class          = "db.t3.micro"
+  db_name                 = "airflowdb"
+  username                = "airflow"
+  password                = random_password.pg.result
+  db_subnet_group_name    = aws_db_subnet_group.pg.name
+  vpc_security_group_ids  = [aws_security_group.pg.id]
+  skip_final_snapshot     = true
+  publicly_accessible     = false
+  deletion_protection     = false
+  apply_immediately       = true
+  tags                    = var.tags
+}
+
+# --- AWS Secrets Manager: Airflow Postgres Connection ---
+resource "aws_secretsmanager_secret" "airflow_pg" {
+  name                    = "airflow/connections/my_postgres_db"
+  tags                    = var.tags
+  recovery_window_in_days = 0
+}
+
+resource "random_password" "pg_url_encoded" {
+  length  = 16
+  special = true
+}
+
+resource "aws_secretsmanager_secret_version" "airflow_pg" {
+  secret_id     = aws_secretsmanager_secret.airflow_pg.id
+  secret_string = "postgresql://airflow:${random_password.pg.result}@${aws_db_instance.pg.address}:5432/airflowdb"
+}
+
+# --- MWAA IAM Policy for Secrets Manager access ---
+resource "aws_iam_policy" "mwaa_secrets" {
+  name        = "AllowMWAASecretAccess"
+  description = "Allow MWAA to read Postgres secrets from AWS Secrets Manager"
+  policy      = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Action = ["secretsmanager:GetSecretValue"],
+      Resource = aws_secretsmanager_secret.airflow_pg.arn
+    }]
+  })
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "mwaa_secrets" {
+  role       = module.mwaa.mwaa_role_name
+  policy_arn = aws_iam_policy.mwaa_secrets.arn
 }

@@ -33,4 +33,16 @@ say_goodbye = BashOperator(
         dag=dag
     )
 
+
+# render_dbt_profiles = BashOperator(
+#     task_id='render_dbt_profiles',
+#     bash_command=(
+#         'python3 /usr/local/airflow/dags/dbt_sample_project/render_profiles_from_airflow_conn.py && '
+#         'cat /tmp/profiles.yml'
+#     ),
+#     dag=dag,
+# )
+
+#render_dbt_profiles >> say_hello
+
 say_hello >> say_goodbye
