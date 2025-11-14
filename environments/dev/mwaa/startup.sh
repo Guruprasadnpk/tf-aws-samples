@@ -15,4 +15,4 @@ export PIP_USER=true
 # which aws || pip install awscli
 
 # Generate dbt profiles.yml at container startup using Airflow Connection secret
-python3 /usr/local/airflow/dags/dbt_sample_project/render_profiles_from_airflow_conn.py
+python3 /usr/local/airflow/dags/render_profiles_from_airflow_conn.py
