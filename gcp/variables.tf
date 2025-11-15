@@ -1,7 +1,7 @@
 variable "project_id" {
   description = "The GCP project ID."
   type        = string
-  default     = "gurppup-2885"
+  default     = "gurppup-123"
 }
 
 variable "region" {
@@ -43,11 +43,11 @@ variable "identity_provider_id" {
 variable "aws_oidc_issuer_uri" {
   description = "AWS OIDC issuer URI. Typically https://accounts.google.com or a custom AWS OIDC endpoint."
   type        = string
-  default     = "arn:aws:iam::293661646409:role/mwaa-oidc-role"
+  default     = "https://sts.amazonaws.com"
 }
 
 variable "aws_role_arn" {
   description = "AWS Role ARN that will access BigQuery (referenced in principalSet)."
   type        = string
-  default     = "arn:aws:iam::293661646409:role/mwaa-executor20251112011644352100000002"
+  default     = "arn:aws:iam::293661646409:role/mwaa-oidc-role"
 }
