@@ -14,6 +14,11 @@ data "aws_caller_identity" "current" {}
 locals {
   azs         = slice(data.aws_availability_zones.available.names, 0, 2)
   bucket_name = format("%s-%s", "aws-ia-mwaa", data.aws_caller_identity.current.account_id)
+  mwaa_source_path = "${path.module}/../../../warehouse/mwaa"
+  mwaa_dbt_path = "${path.module}/../../../warehouse/dbt"
+  mwaa_dags_path = "${local.mwaa_source_path}/dags"
+  mwaa_requirements_path = "${local.mwaa_source_path}/requirements.txt"
+  mwaa_startup_script_path = "${local.mwaa_source_path}/startup.sh"
 }
 
 #-----------------------------------------------------------
@@ -64,29 +69,35 @@ resource "aws_s3_bucket_public_access_block" "this" {
 }
 
 # Upload DAGS
-resource "aws_s3_object" "object1" {
-  for_each = fileset("dags/", "*")
+resource "aws_s3_object" "dags" {
+  for_each = fileset(local.mwaa_dags_path, "*")
   bucket   = aws_s3_bucket.this.id
   key      = "dags/${each.value}"
-  source   = "dags/${each.value}"
-  etag     = filemd5("dags/${each.value}")
+  source   = "${local.mwaa_dags_path}/${each.value}"
+  etag     = filemd5("${local.mwaa_dags_path}/${each.value}")
 }
 
 # Upload plugins/requirements.txt
-resource "aws_s3_object" "reqs" {
-  for_each = fileset("mwaa/", "*")
+resource "aws_s3_object" "requirements" {
   bucket   = aws_s3_bucket.this.id
-  key      = each.value
-  source   = "mwaa/${each.value}"
-  etag     = filemd5("mwaa/${each.value}")
+  key      = "requirements.txt"
+  source   = local.mwaa_requirements_path
+  etag     = filemd5(local.mwaa_requirements_path)
 }
 
-resource "aws_s3_object" "dbt_project" {
-  for_each = fileset("dags/dbt_sample_project", "**")
+resource "aws_s3_object" "startup_script" {
   bucket   = aws_s3_bucket.this.id
-  key      = "dags/dbt_sample_project/${each.value}"
-  source   = "dags/dbt_sample_project/${each.value}"
-  etag     = filemd5("dags/dbt_sample_project/${each.value}")
+  key      = "startup.sh"
+  source   = local.mwaa_startup_script_path
+  etag     = filemd5(local.mwaa_startup_script_path)
+}
+
+resource "aws_s3_object" "dbt" {
+  for_each = fileset(local.mwaa_dbt_path, "**")
+  bucket   = aws_s3_bucket.this.id
+  key      = "dags/dbt/${each.value}"
+  source   = "${local.mwaa_dbt_path}/${each.value}"
+  etag     = filemd5("${local.mwaa_dbt_path}/${each.value}")
 }
 
 #-----------------------------------------------------------
@@ -103,11 +114,11 @@ module "mwaa" {
   dag_s3_path       = "dags"
 
   ## If uploading requirements.txt or plugins, you can enable these via these options
-  #plugins_s3_path      = "plugins.zip"
+  #plugins_s3_path      = "warehouse/mwaa/plugins.zip"
   requirements_s3_path = "requirements.txt"
-  requirements_s3_object_version = aws_s3_object.reqs["requirements.txt"].version_id
+  requirements_s3_object_version = aws_s3_object.requirements.version_id
   startup_script_s3_path = "startup.sh"
-  startup_script_s3_object_version = aws_s3_object.reqs["startup.sh"].version_id
+  startup_script_s3_object_version = aws_s3_object.startup_script.version_id
 
   logging_configuration = {
     dag_processing_logs = {
@@ -155,6 +166,11 @@ module "mwaa" {
 
 }
 
+module "mwaa_oidc_role" {
+  source    = "../../modules/mwaa_oidc_role"
+  role_name = "mwaa-oidc-role"
+}
+
 #---------------------------------------------------------------
 # Supporting Resources
 #---------------------------------------------------------------
@@ -174,92 +190,4 @@ module "vpc" {
   enable_dns_hostnames = true
 
   tags = var.tags
-}
-
-# --- PostgreSQL test DB for MWAA/dbt demo ---
-resource "aws_db_subnet_group" "pg" {
-  name       = "pg-demo"
-  subnet_ids = module.vpc.private_subnets
-  tags       = var.tags
-}
-
-resource "aws_security_group" "pg" {
-  name        = "pg-demo-sg"
-  description = "Allow MWAA/Airflow access to Postgres"
-  vpc_id      = module.vpc.vpc_id
-  tags        = var.tags
-
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr] # restrict to VPC only; restrict further in prod
-  }
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "random_password" "pg" {
-  length  = 16
-  special = false
-}
-
-resource "aws_db_instance" "pg" {
-  identifier              = "pg-demo"
-  allocated_storage       = 20
-  storage_type            = "gp2"
-  engine                  = "postgres"
-  engine_version          = "17.6"
-  instance_class          = "db.t3.micro"
-  db_name                 = "airflowdb"
-  username                = "airflow"
-  password                = random_password.pg.result
-  db_subnet_group_name    = aws_db_subnet_group.pg.name
-  vpc_security_group_ids  = [aws_security_group.pg.id]
-  skip_final_snapshot     = true
-  publicly_accessible     = false
-  deletion_protection     = false
-  apply_immediately       = true
-  tags                    = var.tags
-}
-
-# --- AWS Secrets Manager: Airflow Postgres Connection ---
-resource "aws_secretsmanager_secret" "airflow_pg" {
-  name                    = "airflow/connections/my_postgres_db"
-  tags                    = var.tags
-  recovery_window_in_days = 0
-}
-
-resource "random_password" "pg_url_encoded" {
-  length  = 16
-  special = true
-}
-
-resource "aws_secretsmanager_secret_version" "airflow_pg" {
-  secret_id     = aws_secretsmanager_secret.airflow_pg.id
-  secret_string = "postgresql://airflow:${random_password.pg.result}@${aws_db_instance.pg.address}:5432/airflowdb"
-}
-
-# --- MWAA IAM Policy for Secrets Manager access ---
-resource "aws_iam_policy" "mwaa_secrets" {
-  name        = "AllowMWAASecretAccess"
-  description = "Allow MWAA to read Postgres secrets from AWS Secrets Manager"
-  policy      = jsonencode({
-    Version = "2012-10-17",
-    Statement = [{
-      Effect = "Allow",
-      Action = ["secretsmanager:GetSecretValue"],
-      Resource = aws_secretsmanager_secret.airflow_pg.arn
-    }]
-  })
-  tags = var.tags
-}
-
-resource "aws_iam_role_policy_attachment" "mwaa_secrets" {
-  role       = module.mwaa.mwaa_role_name
-  policy_arn = aws_iam_policy.mwaa_secrets.arn
 }

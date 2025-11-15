@@ -7,12 +7,12 @@ import pendulum
 
 # dbt_project_path is required, profiles_path is optional and set in ProfileConfig
 PROJECT_CONFIG = ProjectConfig(
-    dbt_project_path="/usr/local/airflow/dags/dbt_sample_project"
+    dbt_project_path="/usr/local/airflow/dags/dbt/"
 )
 PROFILE_CONFIG = ProfileConfig(
     profile_name="default",
     target_name="dev",
-    profiles_yml_filepath="/tmp/profiles.yml"
+    profiles_yml_filepath="/usr/local/airflow/dags/dbt/profiles.yml"
 )
 EXECUTION_CONFIG = ExecutionConfig(
     dbt_executable_path="/usr/local/airflow/dbt_venv/bin/dbt"

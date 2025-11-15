@@ -1,0 +1,11 @@
+default:
+  target: "{{ env_var('ENVIRONMENT') }}"
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project:  "{{ env_var('GCP_PROJECT_ID') }}" 
+      dataset:  "{{ env_var('BIGQUERY_DATASET') }}"
+      threads: "{{ env_var('DBT_THREADS') | int }}"
+      location:  "{{ env_var('BIGQUERY_LOCATION') }}"
+      timeout_seconds: 300

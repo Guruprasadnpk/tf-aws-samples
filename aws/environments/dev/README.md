@@ -66,7 +66,7 @@ Open the output URL(`mwaa_webserver_url`) from a browser to verify the Amazon MW
 
 #### Step 6: Verify the Amazon MWAA using the sample Apache Airflow workflow
 
-In the `dags` folder you will have a simple DAG file (`hello_world_dag.py`) which you can use to test your MWAA environment.
+In the `warehouse/mwaa/dags` folder you will have a simple DAG file (`hello_world_dag.py`) which you can use to test your MWAA environment.
 This is a very simple workflow that has two tasks that use the BashOperator to echo out a simple string.
 
 **Terraform generated S3 bucket**
@@ -74,8 +74,8 @@ This is a very simple workflow that has two tasks that use the BashOperator to e
 Copy this file using the AWS cli using the following command, replacing the `{mwaa_dags_folder}` with the name of your MWAA environment's S3 bucket.
 
 ```sh
-cd dags
-aws s3 cp hello_world_dag.py s3://{mwaa_dags_folder}/dags/
+cd warehouse/mwaa/dags
+aws s3 cp hello_world_dag.py s3://{mwaa_dags_folder}/warehouse/mwaa/dags/
 ```
 
 **Bring your own S3 Bucket**
@@ -83,11 +83,11 @@ aws s3 cp hello_world_dag.py s3://{mwaa_dags_folder}/dags/
 If you provided an S3 Bucket ARN to be used during the configuration of the MWAA environment, then use the following command to copy the sample dag.
 
 ```sh
-cd dags
-aws s3 cp hello_world_dag.py s3://{your_s3_bucket}/dags/
+cd warehouse/mwaa/dags
+aws s3 cp hello_world_dag.py s3://{your_s3_bucket}/warehouse/mwaa/dags/
 ```
 
-> **Note!** in the above examples, this assumes that you defined the MWAA dags folder to be "dags" (which is the default) so if you changed that, please change the /dags/ to whatever you configured that to be.
+> **Note!** in the above examples, this assumes that you defined the MWAA dags folder to be "warehouse/mwaa/dags" (which is the new default) so if you changed that, please change the /warehouse/mwaa/dags/ to whatever you configured that to be.
 >
 
 Once the DAG has been copied, it might take 2-3 minutes before you see the DAG appear in the Apache Airflow UI.
