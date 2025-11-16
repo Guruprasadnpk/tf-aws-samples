@@ -1,21 +1,36 @@
 """
 Sample dbt DAG using cosmos for MWAA
 """
-from airflow import DAG
-from cosmos import DbtTaskGroup, ProjectConfig, ProfileConfig, ExecutionConfig
-import pendulum
+import os
+from datetime import datetime
+from pathlib import Path
 
-# dbt_project_path is required, profiles_path is optional and set in ProfileConfig
-PROJECT_CONFIG = ProjectConfig(
-    dbt_project_path="/usr/local/airflow/dags/dbt/"
+from airflow import DAG
+from cosmos import DbtDag, ProjectConfig, ProfileConfig, RenderConfig, TestBehavior
+from cosmos.config import ExecutionConfig
+
+# Set up DBT project and profile paths (inside the Airflow container)
+DBT_PROJECT_PATH = Path("/usr/local/airflow/dags/dbt")
+
+# ProjectConfig - points to directory with dbt_project.yml for jaffle_shop
+project_config = ProjectConfig(
+    DBT_PROJECT_PATH,
 )
-PROFILE_CONFIG = ProfileConfig(
+
+# ProfileConfig - points to profiles.yml and uses profile/target for BigQuery
+profile_config = ProfileConfig(
     profile_name="default",
     target_name="dev",
-    profiles_yml_filepath="/usr/local/airflow/dags/dbt/profiles.yml"
+    profiles_yml_filepath=str(DBT_PROJECT_PATH / "profiles.yml"),
 )
-EXECUTION_CONFIG = ExecutionConfig(
+
+execution_config = ExecutionConfig(
     dbt_executable_path="/usr/local/airflow/dbt_venv/bin/dbt"
+)
+
+# Optional: RenderConfig - ensures build/test behavior
+render_config = RenderConfig(
+    test_behavior=TestBehavior.BUILD,
 )
 
 default_args = {
@@ -23,21 +38,20 @@ default_args = {
     'depends_on_past': False
 }
 
-dag = DAG(
-    dag_id="dbt_cosmos_sample_dag",
+dbt_build_dag = DbtDag(
+    # dbt/cosmos-specific parameters
+    project_config=project_config,
+    render_config=render_config,
+    profile_config=profile_config,
+    execution_config=execution_config,
+    operator_args={
+        "install_deps": True,  # install any necessary dependencies before running any dbt command
+        "full_refresh": False,  # set to True if you want a full refresh
+    },
+    # normal DAG parameters
     schedule="@daily",
-    default_args=default_args,
-    start_date=pendulum.now().subtract(days=1),
+    start_date=datetime(2023, 1, 1),
     catchup=False,
-    tags=["dbt", "cosmos", "sample"]
+    dag_id="dbt_cosmos_sample_dag",
+    default_args=default_args,
 )
-
-with dag:
-    dbt_tg = DbtTaskGroup(
-        group_id="dbt_run_and_test",
-        project_config=PROJECT_CONFIG,
-        profile_config=PROFILE_CONFIG,
-        execution_config=EXECUTION_CONFIG
-    )
-
-dbt_tg

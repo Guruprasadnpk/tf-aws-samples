@@ -29,7 +29,7 @@ say_hello = BashOperator(
 
 say_goodbye = BashOperator(
         task_id='say_goodbye',
-        bash_command="echo goodbye",
+        bash_command="pip freeze",
         dag=dag
     )
 

@@ -93,7 +93,15 @@ resource "aws_s3_object" "startup_script" {
 }
 
 resource "aws_s3_object" "dbt" {
-  for_each = fileset(local.mwaa_dbt_path, "**")
+  for_each = toset([
+    for f in fileset(local.mwaa_dbt_path, "**")
+    : f
+    if !(
+      startswith(f, "dbt_packages/") ||
+      startswith(f, "target/") ||
+      startswith(f, "logs/")
+    )
+  ])
   bucket   = aws_s3_bucket.this.id
   key      = "dags/dbt/${each.value}"
   source   = "${local.mwaa_dbt_path}/${each.value}"
@@ -155,7 +163,7 @@ module "mwaa" {
   }
 
   min_workers        = 1
-  max_workers        = 2
+  max_workers        = 5
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnets
 

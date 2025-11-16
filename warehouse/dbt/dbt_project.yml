@@ -1,5 +1,32 @@
-name: dbt_project
-version: '1.0'
-profile: default
+config-version: 2
+
+name: "dbt_project"
+version: "3.0.0"
+require-dbt-version: ">=1.5.0"
+
+profile: default # Put your profile here
 
 model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["data-tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+  - "logs"
+
+vars:
+  "dbt_date:time_zone": "America/Los_Angeles"
+
+seeds:
+  dbt_project:
+    +schema: raw
+
+models:
+  dbt_project:
+    staging:
+      +materialized: view
