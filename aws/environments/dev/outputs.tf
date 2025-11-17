@@ -27,8 +27,3 @@ output "mwaa_security_group_id" {
   description = "The ARN of the MWAA Environment"
   value       = module.mwaa.mwaa_security_group_id
 }
-
-output "mwaa_bq_oidc_role_arn" {
-  description = "The ARN of the MWAA OIDC IAM role for GCP federation"
-  value       = module.mwaa_oidc_role.iam_role_arn
-}

@@ -3,26 +3,23 @@ resource "aws_iam_role" "mwaa_bq_oidc" {
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "airflow.amazonaws.com"
+    Statement = flatten([
+      [
+        {
+          Effect = "Allow"
+          Principal = {
+            Service = "airflow.amazonaws.com"
+          }
+          Action = "sts:AssumeRole"
         }
-        Action = "sts:AssumeRole"
-      },
-      {
+      ],
+      [for arn in var.oidc_provider_arns : {
         Effect = "Allow"
         Principal = {
-          Federated = "arn:aws:iam::293661646409:oidc-provider/sts.amazonaws.com"
+          Federated = arn
         }
         Action = "sts:AssumeRoleWithWebIdentity"
-        Condition = {
-          StringEquals = {
-            "sts.amazonaws.com:aud" = "sts.amazonaws.com"
-          }
-        }
-      }
-    ]
+      }]
+    ])
   })
 }

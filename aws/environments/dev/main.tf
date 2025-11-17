@@ -111,6 +111,10 @@ resource "aws_s3_object" "dbt" {
 #-----------------------------------------------------------
 # NOTE: MWAA Airflow environment takes minimum of 20 mins
 #-----------------------------------------------------------
+module "mwaa_oidc_role" {
+  source = "../../modules/mwaa_oidc_role"
+}
+
 module "mwaa" {
   source = "../../modules/mwaa"
 
@@ -172,11 +176,6 @@ module "mwaa" {
 
   tags = var.tags
 
-}
-
-module "mwaa_oidc_role" {
-  source    = "../../modules/mwaa_oidc_role"
-  role_name = "mwaa-oidc-role"
 }
 
 #---------------------------------------------------------------
