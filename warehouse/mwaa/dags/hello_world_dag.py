@@ -1,6 +1,9 @@
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.utils import timezone
+from airflow.operators.python import PythonOperator
+from google.cloud import bigquery
+import os
 
 default_args = {
     'owner': 'airflow',
@@ -33,6 +36,20 @@ check_role_arn = BashOperator(
     dag=dag
 )
 
+def run_bq_query():
+    creds_path = os.environ.get("CREDS_PATH", os.path.expandvars("${AIRFLOW_HOME}/dags/dbt/gcp_oidc_creds.json"))
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
+    client = bigquery.Client()
+    query_job = client.query("SELECT CURRENT_DATE() as today")
+    row = next(query_job.result())
+    print(f"Today's date from BigQuery: {row['today']}")
+
+query_bigquery_with_oidc = PythonOperator(
+    task_id='query_bigquery_with_oidc',
+    python_callable=run_bq_query,
+    dag=dag,
+)
+
 say_goodbye = BashOperator(
         task_id='say_goodbye',
         bash_command="env",
@@ -51,4 +68,4 @@ say_goodbye = BashOperator(
 
 #render_dbt_profiles >> say_hello
 
-say_hello >> check_role_arn >> say_goodbye
+say_hello >> check_role_arn >> assume_oidc_role >> query_bigquery_with_oidc >> say_goodbye

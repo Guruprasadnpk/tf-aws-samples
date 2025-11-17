@@ -13,3 +13,8 @@ output "workload_identity_pool_id" {
 output "workload_identity_provider_id" {
   value = google_iam_workload_identity_pool_provider.aws_provider.workload_identity_pool_provider_id
 }
+
+output "workload_identity_provider_resource" {
+  description = "Full resource name of the Workload Identity Provider"
+  value = google_iam_workload_identity_pool_provider.aws_provider.name
+}

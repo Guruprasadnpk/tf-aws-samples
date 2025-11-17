@@ -67,7 +67,7 @@ resource "google_iam_workload_identity_pool_provider" "aws_provider" {
 resource "google_service_account_iam_member" "impersonate_from_pool" {
   service_account_id = google_service_account.mwaa_oidc_sa.name
   role              = "roles/iam.workloadIdentityUser"
-  member            = "principalSet://iam.googleapis.com/projects/${data.google_project.project.number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.aws_pool.workload_identity_pool_id}/attribute.aws_role/${var.aws_role_arn}"
+  member            = "principalSet://iam.googleapis.com/projects/${data.google_project.project.number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.aws_pool.workload_identity_pool_id}/attribute.aws_role/arn:aws:iam::293661646409:assumed-role/mwaa-oidc-role/*"
 }
 
 // Grant the 'roles/run.invoker' IAM role for a Cloud Run job/service to the MWAA OIDC Service Account. Assume existence of a 'google_cloud_run_job' resource named 'sample_job'.

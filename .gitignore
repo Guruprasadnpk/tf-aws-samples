@@ -55,4 +55,3 @@ warehouse/dbt/logs/
 # (Optional: if you keep a local profiles.yml in your repo; typically not needed)
 # warehouse/dbt/profiles.yml
 # gcp OIDC credentials file - DO NOT COMMIT
-warehouse/dbt/gcp_oidc_creds.json
