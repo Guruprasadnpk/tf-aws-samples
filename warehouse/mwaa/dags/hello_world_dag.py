@@ -27,9 +27,15 @@ say_hello = BashOperator(
         dag=dag
     )
 
+check_role_arn = BashOperator(
+    task_id='check_role_arn',
+    bash_command="aws sts get-caller-identity",
+    dag=dag
+)
+
 say_goodbye = BashOperator(
         task_id='say_goodbye',
-        bash_command="pip freeze",
+        bash_command="env",
         dag=dag
     )
 
@@ -45,4 +51,4 @@ say_goodbye = BashOperator(
 
 #render_dbt_profiles >> say_hello
 
-say_hello >> say_goodbye
+say_hello >> check_role_arn >> say_goodbye
