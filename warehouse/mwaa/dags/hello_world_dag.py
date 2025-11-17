@@ -36,17 +36,26 @@ check_role_arn = BashOperator(
     dag=dag
 )
 
-def run_bq_query():
-    creds_path = os.environ.get("CREDS_PATH", os.path.expandvars("${AIRFLOW_HOME}/dags/dbt/gcp_oidc_creds.json"))
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
-    client = bigquery.Client()
+GCP_PROJECT_ID = "gurppup-123"
+
+def query_bigquery_with_oidc_json():
+    import os
+    import google.auth
+    from google.cloud import bigquery
+    
+    creds_path = os.environ.get(
+        "CREDS_PATH",
+        os.path.expandvars("${AIRFLOW_HOME}/dbt/gcp_oidc_creds.json")
+    )
+    creds, _ = google.auth.load_credentials_from_file(creds_path)
+    client = bigquery.Client(credentials=creds, project=GCP_PROJECT_ID)
     query_job = client.query("SELECT CURRENT_DATE() as today")
     row = next(query_job.result())
     print(f"Today's date from BigQuery: {row['today']}")
 
 query_bigquery_with_oidc = PythonOperator(
     task_id='query_bigquery_with_oidc',
-    python_callable=run_bq_query,
+    python_callable=query_bigquery_with_oidc_json,
     dag=dag,
 )
 

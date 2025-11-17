@@ -3,10 +3,9 @@ default:
   outputs:
     dev:
       type: bigquery
-      method: service-account
+      method: oauth
       project:  "{{ env_var('GCP_PROJECT_ID') }}" 
       dataset:  "{{ env_var('BIGQUERY_DATASET') }}"
       threads: "{{ env_var('DBT_THREADS') | int }}"
       location:  "{{ env_var('BIGQUERY_LOCATION') }}"
-      keyfile: "{{ env_var('CREDS_PATH') }}"
       timeout_seconds: 300
