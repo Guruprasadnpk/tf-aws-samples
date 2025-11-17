@@ -68,4 +68,4 @@ say_goodbye = BashOperator(
 
 #render_dbt_profiles >> say_hello
 
-say_hello >> check_role_arn >> assume_oidc_role >> query_bigquery_with_oidc >> say_goodbye
+say_hello >> check_role_arn >> query_bigquery_with_oidc >> say_goodbye
