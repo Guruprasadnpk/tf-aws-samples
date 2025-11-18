@@ -9,9 +9,10 @@ export DBT_VENV_PATH="${AIRFLOW_HOME}/dbt_venv"
 export DBT_PROJECT_PATH="${AIRFLOW_HOME}/dags/dbt"
 # Download GCP OIDC credential JSON from AWS Secrets Manager
 export SECRET_NAME="gcp-oidc-creds"
-export REGION_NAME="${AWS_REGION:-us-west-2}"
-export CREDS_PATH="${AIRFLOW_HOME}/dags/dbt/gcp_oidc_creds.json"
-export GOOGLE_APPLICATION_CREDENTIALS=${CREDS_PATH}
+export GCP_AUDIENCE="//iam.googleapis.com/projects/131401156678/locations/global/workloadIdentityPools/mwaa-oidc-pool/providers/mwaa-oidc-provider"
+export AWS_OIDC_ROLE_ARN="arn:aws:iam::293661646409:role/mwaa-oidc-role"
+export AWS_REGION="us-west-2"
+export AWS_EC2_METADATA_DISABLED=true 
 
 export PIP_USER=false
 python3 -m venv "${DBT_VENV_PATH}"

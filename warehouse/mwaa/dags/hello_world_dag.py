@@ -1,80 +1,119 @@
-from airflow import DAG
-from airflow.operators.bash import BashOperator
-from airflow.utils import timezone
-from airflow.operators.python import PythonOperator
-from google.cloud import bigquery
 import os
+from datetime import datetime
 
-default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'email': ['test@yourdomain.com'],
-    'email_on_failure': False,
-    'email_on_retry': False
-}
+import boto3
+import pendulum
+from airflow import DAG
+from airflow.operators.python import PythonOperator
 
-DAG_ID = "hello_world_scheduled_dag"
+from google.auth import aws as google_auth_aws
+from google.auth.transport.requests import Request
+from google.cloud import bigquery
 
-dag = DAG(
-    dag_id=DAG_ID,
-    default_args=default_args,
-    description='Scheduled Apache Airflow DAG',
-    schedule='* 1 * * *',
-    start_date=timezone.datetime(2023, 11, 1),
-    tags=['aws','demo'],
-)
+# ---------------------------------------------------------------------------
+# Config via environment variables (set these in your MWAA environment)
+#
+# GCP_AUDIENCE       : the "audience" string from your GCP external account /
+#                      workload identity provider config
+# GCP_PROJECT        : GCP project id for BigQuery
+# AWS_OIDC_ROLE_ARN  : arn:aws:iam::293661646409:role/mwaa-oidc-role
+# AWS_REGION         : AWS region for STS / signing (e.g. "us-west-2")
+# ---------------------------------------------------------------------------
 
-say_hello = BashOperator(
-        task_id='say_hello',
-        bash_command="echo hello" ,
-        dag=dag
+GCP_AUDIENCE = os.environ["GCP_AUDIENCE"]
+GCP_PROJECT = os.environ["GCP_PROJECT"]
+AWS_OIDC_ROLE_ARN = os.environ.get("AWS_OIDC_ROLE_ARN")
+AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
+
+
+def _assume_oidc_role_if_needed(base_session: boto3.Session) -> boto3.Session:
+    """
+    If AWS_OIDC_ROLE_ARN is set, assume that role from the MWAA
+    execution role and return a new boto3.Session built from the
+    temporary credentials. Otherwise just return the base session.
+
+    This keeps a clean separation:
+      - MWAA execution role: airflow / infra access
+      - mwaa-oidc-role     : used only for AWS→GCP federation
+    """
+    if not AWS_OIDC_ROLE_ARN:
+        return base_session
+
+    sts = base_session.client("sts", region_name=AWS_REGION)
+    resp = sts.assume_role(
+        RoleArn=AWS_OIDC_ROLE_ARN,
+        RoleSessionName="mwaa-bigquery-oidc-session",
     )
 
-check_role_arn = BashOperator(
-    task_id='check_role_arn',
-    bash_command="aws sts get-caller-identity",
-    dag=dag
-)
+    creds = resp["Credentials"]
 
-GCP_PROJECT_ID = "gurppup-123"
-
-def query_bigquery_with_oidc_json():
-    import os
-    import google.auth
-    from google.cloud import bigquery
-    
-    creds_path = os.environ.get(
-        "CREDS_PATH",
-        os.path.expandvars("${AIRFLOW_HOME}/dbt/gcp_oidc_creds.json")
-    )
-    creds, _ = google.auth.load_credentials_from_file(creds_path)
-    client = bigquery.Client(credentials=creds, project=GCP_PROJECT_ID)
-    query_job = client.query("SELECT CURRENT_DATE() as today")
-    row = next(query_job.result())
-    print(f"Today's date from BigQuery: {row['today']}")
-
-query_bigquery_with_oidc = PythonOperator(
-    task_id='query_bigquery_with_oidc',
-    python_callable=query_bigquery_with_oidc_json,
-    dag=dag,
-)
-
-say_goodbye = BashOperator(
-        task_id='say_goodbye',
-        bash_command="env",
-        dag=dag
+    return boto3.Session(
+        aws_access_key_id=creds["AccessKeyId"],
+        aws_secret_access_key=creds["SecretAccessKey"],
+        aws_session_token=creds["SessionToken"],
+        region_name=AWS_REGION,
     )
 
 
-# render_dbt_profiles = BashOperator(
-#     task_id='render_dbt_profiles',
-#     bash_command=(
-#         'python3 /usr/local/airflow/dags/dbt_sample_project/render_profiles_from_airflow_conn.py && '
-#         'cat /tmp/profiles.yml'
-#     ),
-#     dag=dag,
-# )
+def query_bigquery_with_oidc(**_kwargs):
+    """
+    Task:
+      1. Get AWS creds from MWAA (optionally via mwaa-oidc-role).
+      2. Exchange them for a GCP access token using Workload Identity Federation.
+      3. Run a simple BigQuery query to validate everything is wired correctly.
+    """
 
-#render_dbt_profiles >> say_hello
+    # 1) Base session uses MWAA execution role credentials
+    base_session = boto3.Session()
 
-say_hello >> check_role_arn >> query_bigquery_with_oidc >> say_goodbye
+    # 2) Optionally assume the mwaa-oidc-role
+    aws_session = _assume_oidc_role_if_needed(base_session)
+
+    # 3) Let google-auth use this session to call STS + GCP STS
+    aws_creds = google_auth_aws.Credentials.from_session(
+        aws_session,
+        region=AWS_REGION,
+        audience=GCP_AUDIENCE,
+    )
+
+    # 4) Force a refresh to get an access token (good for debugging)
+    aws_creds.refresh(Request())
+
+    # 5) Use those credentials with BigQuery
+    bq_client = bigquery.Client(
+        project=GCP_PROJECT,
+        credentials=aws_creds,
+    )
+
+    query = "SELECT 1 AS col"
+    job = bq_client.query(query)
+    rows = list(job.result())
+    for row in rows:
+        print(f"BigQuery result row: col={row.col}")
+
+    # Log some identity info (optional, but handy)
+    print(f"Successfully queried BigQuery in project {GCP_PROJECT}")
+
+
+# ---------------------------------------------------------------------------
+# Airflow DAG definition
+# ---------------------------------------------------------------------------
+
+local_tz = pendulum.timezone("UTC")
+
+with DAG(
+    dag_id="hello_world_scheduled_dag",
+    schedule_interval=None,  # or "0 * * * *" etc
+    start_date=datetime(2025, 1, 1, tzinfo=local_tz),
+    catchup=False,
+    tags=["example", "bigquery", "oidc"],
+) as dag:
+
+    query_bigquery_task = PythonOperator(
+        task_id="query_bigquery_with_oidc",
+        python_callable=query_bigquery_with_oidc,
+        provide_context=True,
+    )
+
+    # If you have other tasks (e.g. a "hello_world" print), you can chain them:
+    # hello_task >> query_bigquery_task
