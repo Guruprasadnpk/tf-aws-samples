@@ -108,13 +108,6 @@ resource "aws_s3_object" "dbt" {
   etag     = filemd5("${local.mwaa_dbt_path}/${each.value}")
 }
 
-#-----------------------------------------------------------
-# NOTE: MWAA Airflow environment takes minimum of 20 mins
-#-----------------------------------------------------------
-module "mwaa_oidc_role" {
-  source = "../../modules/mwaa_oidc_role"
-}
-
 module "mwaa" {
   source = "../../modules/mwaa"
 
@@ -176,6 +169,35 @@ module "mwaa" {
 
   tags = var.tags
 
+}
+
+#-----------------------------------------------------------
+# OIDC IAM role assumed from MWAA
+#-----------------------------------------------------------
+module "mwaa_oidc_role" {
+  source = "../../modules/mwaa_oidc_role"
+
+  mwaa_execution_role_arn = module.mwaa.execution_role_arn
+}
+
+data "aws_iam_policy_document" "mwaa_assume_oidc_role" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "sts:AssumeRole",
+    ]
+    resources = [
+      module.mwaa_oidc_role.iam_role_arn,
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "mwaa_assume_oidc_role" {
+  count = module.mwaa.mwaa_role_name != "" ? 1 : 0
+
+  name_prefix = "mwaa-assume-oidc-role"
+  role        = module.mwaa.mwaa_role_name
+  policy      = data.aws_iam_policy_document.mwaa_assume_oidc_role.json
 }
 
 #---------------------------------------------------------------

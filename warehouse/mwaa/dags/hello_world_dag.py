@@ -21,7 +21,7 @@ from google.cloud import bigquery
 # ---------------------------------------------------------------------------
 
 GCP_AUDIENCE = os.environ["GCP_AUDIENCE"]
-GCP_PROJECT = os.environ["GCP_PROJECT"]
+GCP_PROJECT = os.environ["GCP_PROJECT_ID"]
 AWS_OIDC_ROLE_ARN = os.environ.get("AWS_OIDC_ROLE_ARN")
 AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
 
@@ -69,11 +69,23 @@ def query_bigquery_with_oidc(**_kwargs):
     # 2) Optionally assume the mwaa-oidc-role
     aws_session = _assume_oidc_role_if_needed(base_session)
 
-    # 3) Let google-auth use this session to call STS + GCP STS
-    aws_creds = google_auth_aws.Credentials.from_session(
-        aws_session,
+    # 3) Let google-auth use this session to call STS + GCP STS.
+    # Some google-auth versions (including the one bundled with MWAA) do not
+    # yet implement Credentials.from_session, so we construct the credentials
+    # manually from the boto3 session's underlying credentials.
+    session_creds = aws_session.get_credentials()
+    if session_creds is None:
+        raise RuntimeError("No AWS credentials available in boto3 session")
+
+    frozen_creds = session_creds.get_frozen_credentials()
+
+    aws_creds = google_auth_aws.Credentials(
+        access_key_id=frozen_creds.access_key,
+        secret_access_key=frozen_creds.secret_key,
+        session_token=frozen_creds.token,
         region=AWS_REGION,
         audience=GCP_AUDIENCE,
+        subject_token_type="urn:ietf:params:aws:token-type:aws4_request",
     )
 
     # 4) Force a refresh to get an access token (good for debugging)
@@ -103,7 +115,7 @@ local_tz = pendulum.timezone("UTC")
 
 with DAG(
     dag_id="hello_world_scheduled_dag",
-    schedule_interval=None,  # or "0 * * * *" etc
+    schedule=None,  # or "0 * * * *" etc
     start_date=datetime(2025, 1, 1, tzinfo=local_tz),
     catchup=False,
     tags=["example", "bigquery", "oidc"],
@@ -112,7 +124,6 @@ with DAG(
     query_bigquery_task = PythonOperator(
         task_id="query_bigquery_with_oidc",
         python_callable=query_bigquery_with_oidc,
-        provide_context=True,
     )
 
     # If you have other tasks (e.g. a "hello_world" print), you can chain them:

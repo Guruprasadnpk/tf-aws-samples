@@ -4,10 +4,11 @@ resource "aws_iam_role" "mwaa_bq_oidc" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      # Allow the MWAA execution role to assume this role.
       {
         Effect = "Allow"
         Principal = {
-          Service = "airflow.amazonaws.com"
+          AWS = var.mwaa_execution_role_arn
         }
         Action = "sts:AssumeRole"
       }
